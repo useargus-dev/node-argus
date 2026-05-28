@@ -4,6 +4,8 @@ import { test } from "node:test";
 
 const require = createRequire(import.meta.url);
 
+// Built by `npm test` before this file runs.
+
 test("ESM import exposes loadEnv", async () => {
   const { loadEnv } = await import("../dist/index.js");
   assert.equal(typeof loadEnv, "function");
