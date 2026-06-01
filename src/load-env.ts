@@ -5,6 +5,7 @@ import { parse, populate } from "dotenv";
 
 import { ArgusLockedError } from "./errors.js";
 import { fetchBucketEnv } from "./ipc-client.js";
+import { clearCachedProxy, setCachedProxy } from "./proxy-state.js";
 
 export type LoadEnvOptions = {
   /** Path to .env file. Default: `.env` in `process.cwd()`. */
@@ -63,7 +64,10 @@ function bucketCredentials(
 }
 
 /**
- * Load environment variables into `process.env`.
+ * Load environment variables into `process.env` (secrets only).
+ *
+ * Does not enable HTTP proxy or TLS patches. Call `configure()` after
+ * `loadEnv()` when the bucket has Argus Proxy enabled.
  *
  * 1. Parse `.env` (does not apply yet).
  * 2. If `ARGUS_BUCKET_ID` and `ARGUS_BUCKET_TOKEN` are set (OS env or `.env`),
@@ -83,25 +87,29 @@ export async function loadEnv(
   const dotenvOverride = options?.override ?? false;
 
   if (!bucketId || !token) {
+    clearCachedProxy();
     const keys = applyToProcessEnv(parsed, dotenvOverride);
     return { source: "dotenv", keys };
   }
 
   try {
-    const bucketEnv = await fetchBucketEnv({
+    const bucketResult = await fetchBucketEnv({
       bucketId,
       clientToken: token,
       timeoutMs: options?.timeoutMs,
     });
 
-    for (const [key, value] of Object.entries(bucketEnv)) {
+    for (const [key, value] of Object.entries(bucketResult.env)) {
       process.env[key] = value;
     }
 
+    setCachedProxy(bucketResult.proxy);
+
     const keysFromDotenv = applyToProcessEnv(parsed, true);
-    const keys = [...new Set([...Object.keys(bucketEnv), ...keysFromDotenv])];
+    const keys = [...new Set([...Object.keys(bucketResult.env), ...keysFromDotenv])];
     return { source: "bucket", keys };
   } catch (e) {
+    clearCachedProxy();
     if (fallbackOnLocked && e instanceof ArgusLockedError) {
       console.warn(`[@useargus/node] ${e.message}; loading .env only`);
       const keys = applyToProcessEnv(parsed, dotenvOverride);

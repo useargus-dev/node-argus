@@ -26,6 +26,8 @@ import { loadEnv } from "@useargus/node";
 await loadEnv();
 ```
 
+When the bucket has **Argus Proxy** enabled, call `configure()` after `loadEnv()` to route HTTP through Argus (env vars, `http`/`https` global agents, `tls`, and undici **`fetch`**). Proxy-enabled mappings receive `argus-proxy-*` placeholders instead of real API keys.
+
 ### CommonJS
 
 ```js
@@ -64,10 +66,10 @@ Copy `.env.example` to get started.
 
 ### Argus app lock vs sign-out
 
-| State | IPC |
-|--------|-----|
-| Signed in, idle app lock | Works — approval popup may appear for new clients |
-| Signed out | Returns `locked` — use `fallbackOnLocked: true` to load `.env` only |
+| State                    | IPC                                                                 |
+| ------------------------ | ------------------------------------------------------------------- |
+| Signed in, idle app lock | Works — approval popup may appear for new clients                   |
+| Signed out               | Returns `locked` — use `fallbackOnLocked: true` to load `.env` only |
 
 Idle **app lock** does **not** block IPC. Only **sign-out** returns IPC `locked`.
 
@@ -83,15 +85,30 @@ The first time a process connects, Argus shows an **access approval** dialog (up
 import { loadEnv } from "@useargus/node";
 
 const result = await loadEnv({
-  path: ".env",              // default: .env in process.cwd()
-  override: false,           // dotenv-only mode: don't override existing OS env
-  timeoutMs: 130_000,        // IPC timeout
-  fallbackOnLocked: false,   // if signed out, load .env instead of throwing
+  path: ".env", // default: .env in process.cwd()
+  override: false, // dotenv-only mode: don't override existing OS env
+  timeoutMs: 130_000, // IPC timeout
+  fallbackOnLocked: false, // if signed out, load .env instead of throwing
 });
 
 // result.source === "bucket" | "dotenv"
 // result.keys — names set (never values)
 ```
+
+### `configure(client?)`
+
+Call after `loadEnv()` when the bucket has Argus Proxy enabled:
+
+```ts
+import { loadEnv, configure } from "@useargus/node";
+
+await loadEnv();
+await configure(); // global proxy + CA for fetch, axios (globalAgent), tls, etc.
+```
+
+### `loadProxies(options?)` (deprecated)
+
+Use `configure()` instead. Applies undici global dispatcher only.
 
 ### `fetchBucketEnv(options)`
 
@@ -108,12 +125,23 @@ const env = await fetchBucketEnv({
 
 ### Errors
 
-| Error | When |
-|--------|------|
-| `ArgusConnectionError` | Socket missing, Argus not running |
-| `ArgusLockedError` | Argus signed out (`status: locked`) |
-| `ArgusDeniedError` | User denied or approval timed out |
-| `ArgusError` | Invalid token, bad request, etc. |
+All errors extend `ArgusError` with `.code` and optional `.requestId`. Use `instanceof` for handling:
+
+| Error | Argus IPC | When |
+| ----- | --------- | ---- |
+| `ArgusConnectionError` | — | Socket/pipe missing, timeout, connection closed |
+| `ArgusLockedError` | `status: locked` | Argus signed out |
+| `ArgusApprovalDeniedError` | `denied` + `APPROVAL_DENIED` | User rejected client access |
+| `ArgusApprovalTimeoutError` | `denied` + `APPROVAL_TIMEOUT` | Approval dialog timed out (120s) |
+| `ArgusBucketNotFoundError` | `BUCKET_NOT_FOUND` | Wrong `ARGUS_BUCKET_ID` |
+| `ArgusInvalidTokenError` | `INVALID_TOKEN` | Wrong or rotated `ARGUS_BUCKET_TOKEN` |
+| `ArgusBucketInactiveError` | `BUCKET_INACTIVE` | Bucket paused in Argus |
+| `ArgusPeerResolveError` | `PEER_RESOLVE` | Argus could not identify this process |
+| `ArgusProxyError` | `PROXY_ERROR` | Proxy enabled but misconfigured |
+| `ArgusInvalidRequestError` | `INVALID_REQUEST` | Malformed IPC request |
+| `ArgusInvalidResponseError` | — | Unexpected Argus response |
+| `ArgusConfigureError` | — | `configure()` preconditions or unsupported client |
+| `ArgusError` | other `error` codes | `DB_ERROR`, `INTERNAL_ERROR`, etc. |
 
 ## Development
 
