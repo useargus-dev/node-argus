@@ -10,7 +10,7 @@ import {
   ArgusLockedError,
   ArgusPeerResolveError,
   ArgusProxyError,
-} from "./errors.js";
+} from "../errors.js";
 
 export type IpcResponsePayload = {
   status?: string;

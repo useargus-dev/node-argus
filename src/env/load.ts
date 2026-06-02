@@ -3,9 +3,9 @@ import path from "node:path";
 
 import { parse, populate } from "dotenv";
 
-import { ArgusLockedError } from "./errors.js";
-import { fetchBucketEnv } from "./ipc-client.js";
-import { clearCachedProxy, setCachedProxy } from "./proxy-state.js";
+import { ArgusLockedError } from "../errors.js";
+import { fetchBucketEnv } from "../ipc/client.js";
+import { clearCachedProxy, setCachedProxy } from "../proxy/state.js";
 
 export type LoadEnvOptions = {
   /** Path to .env file. Default: `.env` in `process.cwd()`. */

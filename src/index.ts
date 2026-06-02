@@ -1,15 +1,15 @@
-export { loadEnv } from "./load-env.js";
-export type { LoadEnvOptions, LoadEnvResult } from "./load-env.js";
+export { loadEnv } from "./env/load.js";
+export type { LoadEnvOptions, LoadEnvResult } from "./env/load.js";
 
-export { configure } from "./configure.js";
-export type { ConfigureResult } from "./configure.js";
+export { configure } from "./proxy/configure.js";
+export type { ConfigureResult } from "./proxy/configure.js";
 
 export {
   loadProxies,
   applyUndiciGlobalProxy,
   resolveProxyAgentOptions,
-} from "./load-proxies.js";
-export type { LoadProxiesOptions, ProxyAgentOptions } from "./load-proxies.js";
+} from "./proxy/undici.js";
+export type { LoadProxiesOptions, ProxyAgentOptions } from "./proxy/undici.js";
 
 export {
   ArgusError,
@@ -28,8 +28,8 @@ export {
   ArgusProxyError,
 } from "./errors.js";
 
-export { fetchBucketEnv } from "./ipc-client.js";
-export type { FetchBucketEnvOptions } from "./ipc-client.js";
+export { fetchBucketEnv } from "./ipc/client.js";
+export type { FetchBucketEnvOptions } from "./ipc/client.js";
 
-export { raiseForIpcResponse } from "./ipc-errors.js";
-export type { IpcResponsePayload } from "./ipc-errors.js";
+export { raiseForIpcResponse } from "./ipc/errors.js";
+export type { IpcResponsePayload } from "./ipc/errors.js";

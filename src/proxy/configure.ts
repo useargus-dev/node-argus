@@ -8,14 +8,14 @@ import { fileURLToPath } from "node:url";
 import { HttpProxyAgent } from "http-proxy-agent";
 import { HttpsProxyAgent } from "https-proxy-agent";
 
-import { ArgusConfigureError } from "./errors.js";
+import { ArgusConfigureError } from "../errors.js";
 import {
   applyProxyToProcessEnv,
   fetchBucketEnv,
   type ProxyConfig,
-} from "./ipc-client.js";
-import { applyUndiciGlobalProxy } from "./load-proxies.js";
-import { getCachedProxy, setCachedProxy } from "./proxy-state.js";
+} from "../ipc/client.js";
+import { applyUndiciGlobalProxy } from "./undici.js";
+import { getCachedProxy, setCachedProxy } from "./state.js";
 
 export type ConfigureResult = {
   proxyEnabled: boolean;

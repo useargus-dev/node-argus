@@ -174,6 +174,16 @@ npm publish --access public
 
 Scoped packages require `--access public` on first publish.
 
+## Package layout
+
+Internal modules (public exports unchanged):
+
+- `src/env/load.ts` — `loadEnv`
+- `src/proxy/configure.ts` — `configure`
+- `src/proxy/undici.ts` — undici / deprecated `loadProxies`
+- `src/ipc/client.ts` — IPC client
+- `src/errors.ts` — error types
+
 ## License
 
 MIT

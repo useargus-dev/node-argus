@@ -3,6 +3,6 @@
  *
  * CommonJS apps should call `await loadEnv()` in the entry file instead.
  */
-import { loadEnv } from "./load-env.js";
+import { loadEnv } from "./env/load.js";
 
 await loadEnv();

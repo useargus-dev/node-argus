@@ -1,4 +1,4 @@
-import type { ProxyConfig } from "./ipc-client.js";
+import type { ProxyConfig } from "../ipc/client.js";
 
 let cachedProxy: ProxyConfig | null = null;
 

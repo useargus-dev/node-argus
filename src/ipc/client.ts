@@ -8,8 +8,8 @@ import {
   ArgusConnectionError,
   ArgusError,
   ArgusInvalidResponseError,
-} from "./errors.js";
-import { raiseForIpcResponse, type IpcResponsePayload } from "./ipc-errors.js";
+} from "../errors.js";
+import { raiseForIpcResponse, type IpcResponsePayload } from "./errors.js";
 
 const DEFAULT_TIMEOUT_MS = 130_000;
 
