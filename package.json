@@ -1,6 +1,6 @@
 {
   "name": "@useargus/node",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Load environment variables from Argus via IPC, with .env fallback",
   "type": "module",
   "main": "./dist/index.cjs",

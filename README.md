@@ -2,6 +2,8 @@
 
 Load environment variables from [Argus](https://github.com/useargus-dev) over local IPC, with `.env` fallback — similar to `dotenv`, but secrets come from your Argus bucket when the desktop app is running.
 
+**v0.2** — supports Argus Proxy factories so real API keys never need to sit in `process.env`.
+
 ## Requirements
 
 - **Node.js** 18+
@@ -13,6 +15,42 @@ Load environment variables from [Argus](https://github.com/useargus-dev) over lo
 ```bash
 npm install @useargus/node
 ```
+
+## Usage modes
+
+### Without Argus Proxy
+
+When proxy is **disabled** on the bucket, `loadEnv()` injects **real secret values** into `process.env`. Use fetch, axios, or any client normally:
+
+```ts
+import { loadEnv } from "@useargus/node";
+
+await loadEnv();
+
+const res = await fetch("https://api.anthropic.com/v1/messages", {
+  method: "POST",
+  headers: {
+    "x-api-key": process.env.ANTHROPIC_API_KEY!,
+    "content-type": "application/json",
+    "anthropic-version": "2023-06-01",
+  },
+  body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 64, messages: [...] }),
+});
+```
+
+### With Argus Proxy enabled
+
+When proxy is **enabled**, proxy mappings receive **`argus-proxy-*` placeholders**. Call `loadEnv()` then wire **one factory per HTTP stack**:
+
+```ts
+import { loadEnv, fetchOptions } from "@useargus/node";
+
+await loadEnv();
+const init = await fetchOptions();
+await fetch("https://api.anthropic.com/v1/messages", { ...init, method: "POST", headers: { ... } });
+```
+
+See [Proxy cookbook](#proxy-cookbook) for Anthropic SDK, axios, undici, and LangChain.
 
 ## Usage
 
@@ -26,7 +64,7 @@ import { loadEnv } from "@useargus/node";
 await loadEnv();
 ```
 
-When the bucket has **Argus Proxy** enabled, wire **your HTTP client explicitly** after `loadEnv()` (see [Proxy cookbook](#proxy-cookbook) below). Proxy-enabled mappings receive `argus-proxy-*` placeholders in `process.env` instead of real API keys.
+When the bucket has **Argus Proxy** enabled, wire **your HTTP client explicitly** after `loadEnv()` (see [Usage modes](#usage-modes) and [Proxy cookbook](#proxy-cookbook)).
 
 ### CommonJS
 
@@ -197,16 +235,16 @@ const res = await fetch("https://api.anthropic.com/v1/models", {
 });
 ```
 
-### `@anthropic-ai/sdk`
+### `@anthropic-ai/sdk` (≥ 0.65)
 
 ```ts
 import Anthropic from "@anthropic-ai/sdk";
-import { loadEnv, anthropicHttpAgent } from "@useargus/node";
+import { loadEnv, fetchOptions } from "@useargus/node";
 
 await loadEnv();
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
-  httpAgent: await anthropicHttpAgent(),
+  fetchOptions: await fetchOptions(),
 });
 ```
 
@@ -215,16 +253,15 @@ const client = new Anthropic({
 ```ts
 import Anthropic from "@anthropic-ai/sdk";
 import { ChatAnthropic } from "@langchain/anthropic";
-import { loadEnv, anthropicHttpAgent } from "@useargus/node";
+import { loadEnv, fetchOptions } from "@useargus/node";
 
 await loadEnv();
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
-  httpAgent: await anthropicHttpAgent(),
+  fetchOptions: await fetchOptions(),
 });
 const llm = new ChatAnthropic({
   model: "claude-sonnet-4-5",
-  apiKey: process.env.ANTHROPIC_API_KEY!,
   client: anthropic,
 });
 ```
