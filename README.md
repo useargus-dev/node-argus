@@ -26,7 +26,7 @@ import { loadEnv } from "@useargus/node";
 await loadEnv();
 ```
 
-When the bucket has **Argus Proxy** enabled, call `configure()` after `loadEnv()` to route HTTP through Argus (env vars, `http`/`https` global agents, `tls`, and undici **`fetch`**). Proxy-enabled mappings receive `argus-proxy-*` placeholders instead of real API keys.
+When the bucket has **Argus Proxy** enabled, wire **your HTTP client explicitly** after `loadEnv()` (see [Proxy cookbook](#proxy-cookbook) below). Proxy-enabled mappings receive `argus-proxy-*` placeholders in `process.env` instead of real API keys.
 
 ### CommonJS
 
@@ -95,20 +95,26 @@ const result = await loadEnv({
 // result.keys — names set (never values)
 ```
 
-### `configure(client?)`
+### Proxy factories (preferred)
 
-Call after `loadEnv()` when the bucket has Argus Proxy enabled:
+After `loadEnv()`, use one factory per HTTP library — **no global monkey patches**:
 
-```ts
-import { loadEnv, configure } from "@useargus/node";
+| Factory | Use with |
+|---------|----------|
+| `createProxyAgents()` | Low-level `{ httpAgent, httpsAgent, caBundlePath }` |
+| `anthropicHttpAgent()` | `@anthropic-ai/sdk`, LangChain |
+| `fetchOptions()` | Native `fetch()` / undici (`{ dispatcher }`) |
+| `axiosDefaults()` / `configureAxios(instance)` | axios |
+| `createHttpsAgent()` | `node:https` |
+| `createUndiciProxyAgent()` | undici `Client` / `Pool` |
 
-await loadEnv();
-await configure(); // global proxy + CA for fetch, axios (globalAgent), tls, etc.
-```
+### `configure(client?)` (deprecated)
 
-### `loadProxies(options?)` (deprecated)
+`configure()` without arguments is **deprecated** (warns; removed next major). Pass a client or use factories above.
 
-Use `configure()` instead. Applies undici global dispatcher only.
+### `loadProxies()` (deprecated)
+
+Use `fetchOptions()` instead.
 
 ### `fetchBucketEnv(options)`
 
@@ -174,13 +180,98 @@ npm publish --access public
 
 Scoped packages require `--access public` on first publish.
 
+## Proxy cookbook
+
+Call `await loadEnv()` first in every example.
+
+### Native `fetch`
+
+```ts
+import { loadEnv, fetchOptions } from "@useargus/node";
+
+await loadEnv();
+const fetchInit = await fetchOptions();
+const res = await fetch("https://api.anthropic.com/v1/models", {
+  ...fetchInit,
+  headers: { "x-api-key": process.env.ANTHROPIC_API_KEY! },
+});
+```
+
+### `@anthropic-ai/sdk`
+
+```ts
+import Anthropic from "@anthropic-ai/sdk";
+import { loadEnv, anthropicHttpAgent } from "@useargus/node";
+
+await loadEnv();
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+  httpAgent: await anthropicHttpAgent(),
+});
+```
+
+### LangChain (`@langchain/anthropic`)
+
+```ts
+import Anthropic from "@anthropic-ai/sdk";
+import { ChatAnthropic } from "@langchain/anthropic";
+import { loadEnv, anthropicHttpAgent } from "@useargus/node";
+
+await loadEnv();
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+  httpAgent: await anthropicHttpAgent(),
+});
+const llm = new ChatAnthropic({
+  model: "claude-sonnet-4-5",
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+  client: anthropic,
+});
+```
+
+### axios
+
+```ts
+import axios from "axios";
+import { loadEnv, axiosDefaults } from "@useargus/node";
+
+await loadEnv();
+const client = axios.create({ ...(await axiosDefaults()) });
+```
+
+### undici
+
+```ts
+import { fetch } from "undici";
+import { loadEnv, fetchOptions } from "@useargus/node";
+
+await loadEnv();
+const { dispatcher } = await fetchOptions();
+await fetch("https://api.anthropic.com/v1/models", { dispatcher });
+```
+
+### `node:https`
+
+```ts
+import https from "node:https";
+import { loadEnv, createHttpsAgent } from "@useargus/node";
+
+await loadEnv();
+const agent = await createHttpsAgent();
+https.get("https://api.anthropic.com/v1/models", { agent, ... });
+```
+
+### BAML / custom clients
+
+Pass `httpAgent` or `dispatcher` from `anthropicHttpAgent()` / `fetchOptions()` into the client your stack constructs.
+
 ## Package layout
 
 Internal modules (public exports unchanged):
 
 - `src/env/load.ts` — `loadEnv`
-- `src/proxy/configure.ts` — `configure`
-- `src/proxy/undici.ts` — undici / deprecated `loadProxies`
+- `src/proxy/factories.ts` — explicit proxy wiring
+- `src/proxy/config.ts` — `getProxyConfig`, `requireProxyConfig`
 - `src/ipc/client.ts` — IPC client
 - `src/errors.ts` — error types
 

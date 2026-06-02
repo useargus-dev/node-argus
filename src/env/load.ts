@@ -66,8 +66,8 @@ function bucketCredentials(
 /**
  * Load environment variables into `process.env` (secrets only).
  *
- * Does not enable HTTP proxy or TLS patches. Call `configure()` after
- * `loadEnv()` when the bucket has Argus Proxy enabled.
+ * Does not enable HTTP proxy or TLS. After `loadEnv()`, wire your HTTP client
+ * with factory helpers (`createProxyAgents`, `fetchOptions`, `anthropicHttpAgent`, …).
  *
  * 1. Parse `.env` (does not apply yet).
  * 2. If `ARGUS_BUCKET_ID` and `ARGUS_BUCKET_TOKEN` are set (OS env or `.env`),
