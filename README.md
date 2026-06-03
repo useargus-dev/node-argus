@@ -2,7 +2,7 @@
 
 Load environment variables from [Argus](https://github.com/useargus-dev) over local IPC, with `.env` fallback — similar to `dotenv`, but secrets come from your Argus bucket when the desktop app is running.
 
-**v0.2** — supports Argus Proxy factories so real API keys never need to sit in `process.env`.
+**v0.2** — returns Argus proxy connection details so you wire any HTTP library yourself.
 
 ## Requirements
 
@@ -40,17 +40,17 @@ const res = await fetch("https://api.anthropic.com/v1/messages", {
 
 ### With Argus Proxy enabled
 
-When proxy is **enabled**, proxy mappings receive **`argus-proxy-*` placeholders**. Call `loadEnv()` then wire **one factory per HTTP stack**:
+When proxy is **enabled**, proxy mappings receive **`argus-proxy-*` placeholders**. Call `loadEnv()`, then wire your HTTP client with SDK helpers:
 
 ```ts
-import { loadEnv, fetchOptions } from "@useargus/node";
+import { loadEnv, createArgusUndiciDispatcher } from "@useargus/node";
 
 await loadEnv();
-const init = await fetchOptions();
-await fetch("https://api.anthropic.com/v1/messages", { ...init, method: "POST", headers: { ... } });
+const dispatcher = await createArgusUndiciDispatcher();
+await fetch(url, { dispatcher, headers: { ... } });
 ```
 
-See [Proxy cookbook](#proxy-cookbook) for Anthropic SDK, axios, undici, and LangChain.
+See [docs/usage](./docs/usage/README.md) for per-library guides (fetch, axios, Anthropic SDK, LangChain, …).
 
 ## Usage
 
@@ -64,7 +64,7 @@ import { loadEnv } from "@useargus/node";
 await loadEnv();
 ```
 
-When the bucket has **Argus Proxy** enabled, wire **your HTTP client explicitly** after `loadEnv()` (see [Usage modes](#usage-modes) and [Proxy cookbook](#proxy-cookbook)).
+When the bucket has **Argus Proxy** enabled, wire **your HTTP client** after `loadEnv()` using the proxy helpers (see [docs/usage](./docs/usage/README.md)).
 
 ### CommonJS
 
@@ -133,26 +133,26 @@ const result = await loadEnv({
 // result.keys — names set (never values)
 ```
 
-### Proxy factories (preferred)
+### Proxy wiring
 
-After `loadEnv()`, use one factory per HTTP library — **no global monkey patches**:
+After `loadEnv()`, use per-library **config** helpers and **builders**:
 
-| Factory                                        | Use with                                            |
-| ---------------------------------------------- | --------------------------------------------------- |
-| `createProxyAgents()`                          | Low-level `{ httpAgent, httpsAgent, caBundlePath }` |
-| `anthropicHttpAgent()`                         | `@anthropic-ai/sdk`, LangChain                      |
-| `fetchOptions()`                               | Native `fetch()` / undici (`{ dispatcher }`)        |
-| `axiosDefaults()` / `configureAxios(instance)` | axios                                               |
-| `createHttpsAgent()`                           | `node:https`                                        |
-| `createUndiciProxyAgent()`                     | undici `Client` / `Pool`                            |
+```ts
+import { createArgusUndiciDispatcher, argusAxiosClientConfig } from "@useargus/node";
 
-### `configure(client?)` (deprecated)
+const dispatcher = await createArgusUndiciDispatcher();
+```
 
-`configure()` without arguments is **deprecated** (warns; removed next major). Pass a client or use factories above.
+| Kind | Functions |
+| ---- | --------- |
+| Config | `argusUndiciClientConfig()`, `argusFetchClientConfig()`, `argusAxiosClientConfig()`, `argusHttpsClientConfig()` |
+| Builders | `createArgusUndiciDispatcher()`, `createArgusHttpsProxyAgent()` |
 
-### `loadProxies()` (deprecated)
+Per-library copy-paste examples: **[docs/usage/](./docs/usage/README.md)**
 
-Use `fetchOptions()` instead.
+Install `undici` and/or `https-proxy-agent` in your app — not bundled in `@useargus/node`.
+
+Low-level IPC fields remain on `requireProxyConfig()` / `getProxyConfig()`.
 
 ### `fetchBucketEnv(options)`
 
@@ -184,8 +184,45 @@ All errors extend `ArgusError` with `.code` and optional `.requestId`. Use `inst
 | `ArgusProxyError`           | `PROXY_ERROR`                 | Proxy enabled but misconfigured                   |
 | `ArgusInvalidRequestError`  | `INVALID_REQUEST`             | Malformed IPC request                             |
 | `ArgusInvalidResponseError` | —                             | Unexpected Argus response                         |
-| `ArgusConfigureError`       | —                             | `configure()` preconditions or unsupported client |
+| `ArgusConfigureError`       | —                             | Proxy unavailable or disabled for bucket          |
 | `ArgusError`                | other `error` codes           | `DB_ERROR`, `INTERNAL_ERROR`, etc.                |
+
+## Proxy cookbook
+
+Call `await loadEnv()` first in every example. Full guides: **[docs/usage/](./docs/usage/README.md)**
+
+### Native fetch
+
+```ts
+import { loadEnv, createArgusUndiciDispatcher } from "@useargus/node";
+
+await loadEnv();
+const dispatcher = await createArgusUndiciDispatcher();
+await fetch("https://api.anthropic.com/v1/models", { dispatcher, headers: { ... } });
+```
+
+### axios
+
+```ts
+import axios from "axios";
+import { loadEnv, createArgusHttpsProxyAgent } from "@useargus/node";
+
+await loadEnv();
+const agent = await createArgusHttpsProxyAgent();
+const client = axios.create({ httpsAgent: agent, httpAgent: agent, proxy: false });
+```
+
+### Other libraries
+
+See [docs/usage/](./docs/usage/README.md) for undici, node:https, Anthropic SDK, and LangChain.
+
+## Package layout
+
+- `src/env/load.ts` — `loadEnv`
+- `src/proxy/config.ts` — `getProxyConfig`, `requireProxyConfig`, `proxyUrl`
+- `src/proxy/wiring.ts` — per-library proxy config and builders
+- `src/ipc/client.ts` — IPC client, `ProxyConfig`
+- `src/errors.ts` — error types
 
 ## Development
 
@@ -203,114 +240,9 @@ Publishing is **manual** via GitHub Actions (adding `NPM_TOKEN` alone does not p
 
 1. Add repository secret **`NPM_TOKEN`** (npm access token with publish rights).
 2. Go to **Actions → Publish to npm → Run workflow**.
-3. Enter the version (e.g. `0.1.0` or `v0.1.0`).
-
-The workflow runs CI, sets `package.json` version, publishes to npm, tags `v<version>`, and creates a GitHub release.
-
-### Publish locally (optional)
-
-```bash
-npm login
-npm run ci
-npm version 0.1.0 --no-git-tag-version
-npm publish --access public
-```
+3. Enter the version (e.g. `0.2.0` or `v0.2.0`).
 
 Scoped packages require `--access public` on first publish.
-
-## Proxy cookbook
-
-Call `await loadEnv()` first in every example.
-
-### Native `fetch`
-
-```ts
-import { loadEnv, fetchOptions } from "@useargus/node";
-
-await loadEnv();
-const fetchInit = await fetchOptions();
-const res = await fetch("https://api.anthropic.com/v1/models", {
-  ...fetchInit,
-  headers: { "x-api-key": process.env.ANTHROPIC_API_KEY! },
-});
-```
-
-### `@anthropic-ai/sdk` (≥ 0.65)
-
-```ts
-import Anthropic from "@anthropic-ai/sdk";
-import { loadEnv, fetchOptions } from "@useargus/node";
-
-await loadEnv();
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-  fetchOptions: await fetchOptions(),
-});
-```
-
-### LangChain (`@langchain/anthropic`)
-
-```ts
-import Anthropic from "@anthropic-ai/sdk";
-import { ChatAnthropic } from "@langchain/anthropic";
-import { loadEnv, fetchOptions } from "@useargus/node";
-
-await loadEnv();
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-  fetchOptions: await fetchOptions(),
-});
-const llm = new ChatAnthropic({
-  model: "claude-sonnet-4-5",
-  client: anthropic,
-});
-```
-
-### axios
-
-```ts
-import axios from "axios";
-import { loadEnv, axiosDefaults } from "@useargus/node";
-
-await loadEnv();
-const client = axios.create({ ...(await axiosDefaults()) });
-```
-
-### undici
-
-```ts
-import { fetch } from "undici";
-import { loadEnv, fetchOptions } from "@useargus/node";
-
-await loadEnv();
-const { dispatcher } = await fetchOptions();
-await fetch("https://api.anthropic.com/v1/models", { dispatcher });
-```
-
-### `node:https`
-
-```ts
-import https from "node:https";
-import { loadEnv, createHttpsAgent } from "@useargus/node";
-
-await loadEnv();
-const agent = await createHttpsAgent();
-https.get("https://api.anthropic.com/v1/models", { agent, ... });
-```
-
-### BAML / custom clients
-
-Pass `httpAgent` or `dispatcher` from `anthropicHttpAgent()` / `fetchOptions()` into the client your stack constructs.
-
-## Package layout
-
-Internal modules (public exports unchanged):
-
-- `src/env/load.ts` — `loadEnv`
-- `src/proxy/factories.ts` — explicit proxy wiring
-- `src/proxy/config.ts` — `getProxyConfig`, `requireProxyConfig`
-- `src/ipc/client.ts` — IPC client
-- `src/errors.ts` — error types
 
 ## License
 

@@ -1,9 +1,6 @@
 export { loadEnv } from "./env/load.js";
 export type { LoadEnvOptions, LoadEnvResult } from "./env/load.js";
 
-export { configure } from "./proxy/configure.js";
-export type { ConfigureResult } from "./proxy/configure.js";
-
 export {
   getProxyConfig,
   requireProxyConfig,
@@ -11,23 +8,26 @@ export {
 } from "./proxy/config.js";
 
 export {
-  createProxyAgents,
-  anthropicHttpAgent,
-  fetchOptions,
-  fetchAgentOptions,
-  configureAxios,
-  axiosDefaults,
-  createUndiciProxyAgent,
-  createHttpsAgent,
-} from "./proxy/factories.js";
-export type { ProxyAgents, FetchInitOptions, AxiosLike } from "./proxy/factories.js";
-
-export {
-  loadProxies,
-  applyUndiciGlobalProxy,
-  resolveProxyAgentOptions,
-} from "./proxy/undici.js";
-export type { LoadProxiesOptions, ProxyAgentOptions } from "./proxy/undici.js";
+  argusUndiciClientConfig,
+  argusFetchClientConfig,
+  argusAxiosClientConfig,
+  argusHttpsClientConfig,
+  argusAnthropicClientConfig,
+  argusLangChainAnthropicClientConfig,
+  argusAxiosCreateConfig,
+  argusFetchConfig,
+  createArgusUndiciDispatcher,
+  createArgusHttpsProxyAgent,
+} from "./proxy/wiring.js";
+export type {
+  ArgusUndiciClientConfig,
+  ArgusFetchClientConfig,
+  ArgusAxiosClientConfig,
+  ArgusHttpsClientConfig,
+  ArgusAnthropicClientConfig,
+  ArgusLangChainAnthropicClientConfig,
+  ArgusAxiosCreateConfig,
+} from "./proxy/wiring.js";
 
 export {
   ArgusError,
