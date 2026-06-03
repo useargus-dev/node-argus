@@ -2,7 +2,6 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 import type { ProxyConfig } from "../ipc/client.js";
-import { proxyUrl, requireProxyConfig } from "./config.js";
 import { getArgusProxyDetailed } from "./detailed.js";
 
 type ProxyInput = ProxyConfig | undefined;
