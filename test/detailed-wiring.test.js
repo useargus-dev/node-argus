@@ -4,6 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, test } from "node:test";
 
+/** undici 7.13+ expects global `File` (Node 20+). Config-only tests still run on 18. */
+const supportsUndiciBuilders = Number(process.versions.node.split(".")[0]) >= 20;
+
 const PROXY_KEYS = ["ARGUS_BUCKET_TOKEN"];
 
 function clearEnv() {
@@ -56,7 +59,10 @@ test("public API does not export ArgusProxyDetailed or argusProxyWiring", async 
   assert.equal("argusProxyWiring" in mod, false);
 });
 
-test("argusAnthropicClientConfig and argusLangChainAnthropicClientConfig", async () => {
+test(
+  "argusAnthropicClientConfig and argusLangChainAnthropicClientConfig",
+  { skip: supportsUndiciBuilders ? false : "undici 7.13+ requires Node 20 (global File)" },
+  async () => {
   const {
     argusAnthropicClientConfig,
     argusLangChainAnthropicClientConfig,
@@ -66,15 +72,21 @@ test("argusAnthropicClientConfig and argusLangChainAnthropicClientConfig", async
   assert.ok(anthropic.fetchOptions.dispatcher);
   const langchain = await argusLangChainAnthropicClientConfig(proxy);
   assert.ok(langchain.clientOptions.fetchOptions.dispatcher);
-});
+  },
+);
 
-test("argusFetchConfig and argusAxiosCreateConfig", async () => {
-  const { argusFetchConfig, argusAxiosCreateConfig } = await import(
-    "../dist/index.js"
-  );
+test("argusFetchConfig builds undici dispatcher", {
+  skip: supportsUndiciBuilders ? false : "undici 7.13+ requires Node 20 (global File)",
+}, async () => {
+  const { argusFetchConfig } = await import("../dist/index.js");
   const proxy = sampleProxy();
   const fetchCfg = await argusFetchConfig(proxy);
   assert.ok(fetchCfg.dispatcher);
+});
+
+test("argusAxiosCreateConfig builds proxy agents", async () => {
+  const { argusAxiosCreateConfig } = await import("../dist/index.js");
+  const proxy = sampleProxy();
   const axiosCfg = await argusAxiosCreateConfig(proxy);
   assert.ok(axiosCfg.httpsAgent);
   assert.equal(axiosCfg.httpAgent, axiosCfg.httpsAgent);
