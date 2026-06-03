@@ -6,10 +6,10 @@ import path from "node:path";
 
 import {
   ArgusConnectionError,
-  ArgusDeniedError,
   ArgusError,
-  ArgusLockedError,
-} from "./errors.js";
+  ArgusInvalidResponseError,
+} from "../errors.js";
+import { raiseForIpcResponse, type IpcResponsePayload } from "./errors.js";
 
 const DEFAULT_TIMEOUT_MS = 130_000;
 
@@ -20,16 +20,28 @@ interface IpcRequest {
   cwd?: string;
 }
 
-interface IpcResponse {
-  status: string;
-  request_id?: string;
-  env?: Record<string, string>;
-  code?: string;
-  message?: string;
+export interface ProxyConfig {
+  enabled: boolean;
+  httpProxy: string;
+  httpsProxy: string;
+  noProxy: string;
+  caBundlePath: string;
+}
+
+export interface FetchBucketEnvResult {
+  env: Record<string, string>;
+  proxy: ProxyConfig | null;
 }
 
 function socketPath(): string {
   return path.join(os.homedir(), ".argus", "argus.sock");
+}
+
+function connectionHint(): string {
+  if (process.platform === "win32") {
+    return "Is Argus signed in and running? The named pipe \\\\.\\pipe\\argus must exist.";
+  }
+  return `Is Argus signed in and running? Expected Unix socket at ${socketPath()}.`;
 }
 
 function readLine(socket: net.Socket, timeoutMs: number): Promise<string> {
@@ -49,7 +61,13 @@ function readLine(socket: net.Socket, timeoutMs: number): Promise<string> {
 
     const timer = setTimeout(() => {
       socket.destroy();
-      settle(() => reject(new Error("timed out waiting for response")));
+      settle(() =>
+        reject(
+          new Error(
+            `timed out after ${timeoutMs}ms waiting for Argus IPC response`,
+          ),
+        ),
+      );
     }, timeoutMs);
 
     socket.on("data", (chunk: Buffer) => {
@@ -64,7 +82,9 @@ function readLine(socket: net.Socket, timeoutMs: number): Promise<string> {
       if (buf.length > 0) {
         settle(() => resolve(buf.trim()));
       } else {
-        settle(() => reject(new Error("connection closed without response")));
+        settle(() =>
+          reject(new Error("Argus closed the connection without a response")),
+        );
       }
     });
   });
@@ -103,6 +123,56 @@ async function sendWindows(
   });
 }
 
+function parseProxy(raw: unknown): ProxyConfig | null {
+  if (!raw || typeof raw !== "object") return null;
+  const p = raw as Record<string, unknown>;
+  try {
+    return {
+      enabled: Boolean(p.enabled),
+      httpProxy: String(p.httpProxy),
+      httpsProxy: String(p.httpsProxy),
+      noProxy: String(p.noProxy ?? "localhost,127.0.0.1,::1"),
+      caBundlePath: String(p.caBundlePath),
+    };
+  } catch {
+    throw new ArgusInvalidResponseError(
+      "Argus proxy block is missing required fields",
+    );
+  }
+}
+
+function parseResponse(raw: string): FetchBucketEnvResult {
+  let resp: IpcResponsePayload;
+  try {
+    resp = JSON.parse(raw) as IpcResponsePayload;
+  } catch {
+    throw new ArgusInvalidResponseError(
+      "Argus returned non-JSON response. Is the Argus app up to date?",
+    );
+  }
+
+  if (resp.status === "ok" && resp.env) {
+    const proxy = (resp as IpcResponsePayload & { proxy?: unknown }).proxy;
+    return { env: resp.env, proxy: parseProxy(proxy) };
+  }
+
+  raiseForIpcResponse(resp);
+}
+
+export function applyProxyToProcessEnv(proxy: ProxyConfig | null): void {
+  if (!proxy?.enabled) return;
+  process.env.HTTP_PROXY = proxy.httpProxy;
+  process.env.HTTPS_PROXY = proxy.httpsProxy;
+  process.env.http_proxy = proxy.httpProxy;
+  process.env.https_proxy = proxy.httpsProxy;
+  process.env.NO_PROXY = proxy.noProxy;
+  process.env.no_proxy = proxy.noProxy;
+  process.env.NODE_EXTRA_CA_CERTS = proxy.caBundlePath;
+  if (process.version.localeCompare("v24.0.0", undefined, { numeric: true }) >= 0) {
+    process.env.NODE_USE_ENV_PROXY = "1";
+  }
+}
+
 export interface FetchBucketEnvOptions {
   bucketId: string;
   clientToken: string;
@@ -112,7 +182,7 @@ export interface FetchBucketEnvOptions {
 
 export async function fetchBucketEnv(
   options: FetchBucketEnvOptions,
-): Promise<Record<string, string>> {
+): Promise<FetchBucketEnvResult> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const payload: IpcRequest = {
     request_id: randomUUID(),
@@ -129,7 +199,7 @@ export async function fetchBucketEnv(
       const sock = socketPath();
       if (!fs.existsSync(sock)) {
         throw new ArgusConnectionError(
-          `Argus socket not found at ${sock}. Sign in to Argus and keep the app running.`,
+          `Argus socket not found at ${sock}. ${connectionHint()}`,
         );
       }
       raw = await sendUnix(sock, payload, timeoutMs);
@@ -137,39 +207,16 @@ export async function fetchBucketEnv(
   } catch (e) {
     if (e instanceof ArgusError) throw e;
     const msg = e instanceof Error ? e.message : String(e);
-    const hint =
-      process.platform === "win32"
-        ? "Is Argus signed in? Named pipe \\\\.\\pipe\\argus must exist."
-        : "Is Argus signed in?";
-    throw new ArgusConnectionError(`${msg}. ${hint}`);
+    if (msg.includes("timed out")) {
+      throw new ArgusConnectionError(
+        `${msg}. If this is the first connection, approve the client in Argus (up to 120s).`,
+      );
+    }
+    if (msg.includes("without a response")) {
+      throw new ArgusConnectionError(`${msg}. ${connectionHint()}`);
+    }
+    throw new ArgusConnectionError(`${msg}. ${connectionHint()}`);
   }
 
-  let resp: IpcResponse;
-  try {
-    resp = JSON.parse(raw) as IpcResponse;
-  } catch {
-    throw new ArgusError("INVALID_RESPONSE", "Argus returned non-JSON response");
-  }
-
-  if (resp.status === "ok" && resp.env) {
-    return resp.env;
-  }
-  if (resp.status === "locked") {
-    throw new ArgusLockedError(
-      resp.message ?? "Argus is not signed in (IPC unavailable until sign-in)",
-    );
-  }
-  if (resp.status === "denied") {
-    throw new ArgusDeniedError(
-      resp.message ?? "Access denied (or approval timed out)",
-    );
-  }
-  if (resp.status === "error") {
-    throw new ArgusError(
-      resp.code ?? "IPC_ERROR",
-      resp.message ?? "Unknown Argus IPC error",
-    );
-  }
-
-  throw new ArgusError("UNKNOWN_STATUS", `Unexpected IPC status: ${resp.status}`);
+  return parseResponse(raw);
 }

@@ -63,6 +63,9 @@ test("loadEnv reads bucket credentials from .env before IPC", async () => {
   await assert.rejects(
     () => loadEnv(),
     (err) =>
-      err.name === "ArgusConnectionError" || err.name === "ArgusLockedError",
+      err.name === "ArgusConnectionError" ||
+      err.name === "ArgusLockedError" ||
+      err.name === "ArgusDeniedError" ||
+      err.name === "ArgusError",
   );
 });

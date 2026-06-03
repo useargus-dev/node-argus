@@ -7,7 +7,8 @@ export default defineConfig([
     dts: true,
     sourcemap: true,
     clean: true,
-    external: ["dotenv"],
+    external: ["dotenv", "undici", "http-proxy-agent", "https-proxy-agent"],
+    shims: true,
     outDir: "dist",
     outExtension({ format }) {
       return { js: format === "cjs" ? ".cjs" : ".js" };
@@ -18,7 +19,8 @@ export default defineConfig([
     format: ["esm"],
     dts: true,
     sourcemap: true,
-    external: ["dotenv"],
+    external: ["dotenv", "undici", "http-proxy-agent", "https-proxy-agent"],
+    shims: true,
     outDir: "dist",
     outExtension() {
       return { js: ".js" };

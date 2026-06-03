@@ -1,6 +1,6 @@
 {
   "name": "@useargus/node",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Load environment variables from Argus via IPC, with .env fallback",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -58,8 +58,10 @@
     "@types/node": "^22.15.29",
     "eslint": "^9.28.0",
     "globals": "^16.2.0",
+    "https-proxy-agent": "^7.0.6",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3",
-    "typescript-eslint": "^8.33.1"
+    "typescript-eslint": "^8.33.1",
+    "undici": "^7.26.0"
   }
 }
